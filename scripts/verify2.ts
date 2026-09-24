@@ -1,0 +1,45 @@
+import { simulate } from '../src/lib/seed/simulate';
+import * as A from '../src/lib/analytics';
+import { runAction } from '../src/lib/actions';
+const db = simulate();
+const s = { companyIds: ['trd', 'fac', 'srv'] };
+const t = Date.now();
+const k = A.kpis(db, s, '2026-09-01', '2026-09-23');
+console.log('kpis ms', Date.now() - t, k.list.map(x => `${x.id}:${(x.value/1e6).toFixed(0)} (${x.change.toFixed(1)}%)`).join(' '));
+const ag = A.arAging(db, s); console.log('aging', Object.fromEntries(Object.entries(ag.buckets).map(([a,b])=>[a,(b/1e6).toFixed(0)])), 'top', ag.customers.slice(0,4).map(c=>c.customer+':'+(c.total/1e6).toFixed(0)));
+console.log('dso', A.dso(db, s).toFixed(0));
+const ap = A.apSchedule(db, s); console.log('ap', (ap.overdue/1e6).toFixed(0), (ap.today/1e6).toFixed(0), (ap.week/1e6).toFixed(0), (ap.later/1e6).toFixed(0));
+const t2 = Date.now(); const f = A.cashForecast(db, s, 90); console.log('forecast ms', Date.now()-t2, 'start', (f.start/1e6).toFixed(0), 'd30', (f.d30.balance/1e6).toFixed(0), 'd60', (f.d60.balance/1e6).toFixed(0), 'd90', (f.d90.balance/1e6).toFixed(0), 'min', f.min.date, (f.min.balance/1e6).toFixed(0));
+const t3 = Date.now(); const st = A.stockRows(db, s); console.log('stock ms', Date.now()-t3, st.map(r => `${r.p.sku}:${r.status}:${Math.round(r.available)}:${Number.isFinite(r.cover)?Math.round(r.cover):'∞'}`).join(' '));
+console.log('budget', A.budgetVsActual(db, s, 2026, 9, 9).slice(0,6).map(b => `${b.name}/${b.costCenter}:${(b.actual/1e6).toFixed(0)}/${(b.budget/1e6).toFixed(0)} ${b.pct.toFixed(0)}%`).join(' | '));
+console.log('exp cat Sep', A.expenseByCategory(db, s, '2026-09-01','2026-09-23').map(c=>c.label+':'+(c.amount/1e6).toFixed(1)).join(' '));
+console.log('exp cat Aug', A.expenseByCategory(db, s, '2026-08-01','2026-08-31').map(c=>c.label+':'+(c.amount/1e6).toFixed(1)).join(' '));
+console.log('prod', A.productProfit(db, s, '2026-01-01','2026-09-23').map(x=>`${x.p.sku}:${(x.gross/1e6).toFixed(0)}:${x.margin.toFixed(0)}%`).join(' '));
+console.log('cust', A.customerProfit(db, s, '2026-01-01','2026-09-23').slice(0,5).map(x=>`${x.name}:${(x.revenue/1e6).toFixed(0)}`).join(' '));
+console.log('sup', A.supplierSpend(db, s, '2026-01-01','2026-09-23').slice(0,5).map(x=>`${x.name}:${(x.spend/1e6).toFixed(0)} ${x.onTime}/${x.deliveries}`).join(' '));
+console.log('branch', A.branchProfit(db, s, '2026-01-01','2026-09-23').map(x=>`${x.branch.name}:${(x.revenue/1e6).toFixed(0)}/${(x.net/1e6).toFixed(0)}`).join(' '));
+console.log('proj', A.projectFinancials(db, s).map(x=>`${x.p.code}: rev ${(x.revenue/1e6).toFixed(0)} cost ${(x.cost/1e6).toFixed(0)} lab ${(x.labor/1e6).toFixed(0)} mat ${(x.materials/1e6).toFixed(0)} m ${x.margin.toFixed(0)}% bud ${x.budgetUsed.toFixed(0)}%`).join(' | '));
+const ps = A.productionStats(db, ['fac'], '2026-09-01', '2026-09-23'); console.log('prodstats', ps.good, ps.scrap, ps.planned, ps.attainment.toFixed(0), ps.scrapPct.toFixed(1), (ps.variance/1e6).toFixed(1));
+console.log('unit', A.unitCosts(db, ['fac'], '2026-07-01', '2026-09-23').map(u=>`${u.p.sku} std ${(u.std.total/1e3).toFixed(0)}k act ${u.act?(u.act.total/1e3).toFixed(0):'-'}k mat ${(u.std.material/1e3).toFixed(0)}/${u.act?(u.act.material/1e3).toFixed(0):'-'} scrap ${u.scrapPct.toFixed(1)}`).join(' | '));
+console.log('unit Q1', A.unitCosts(db, ['fac'], '2026-01-01', '2026-05-31').map(u=>`${u.p.sku} act ${u.act?(u.act.total/1e3).toFixed(0):'-'}k mat ${u.act?(u.act.material/1e3).toFixed(0):'-'}`).join(' | '));
+const al = A.deriveAlerts(db, s); console.log('alerts', al.length, al.map(a=>a.level+':'+a.title).join(' || '));
+console.log('anom', A.anomalies(db, s).slice(0,4).map(a=>a.memo+':'+(a.amount/1e6).toFixed(1)+':'+a.ratio.toFixed(1)).join(' | '));
+console.log('health', JSON.stringify(A.healthScore(db, s)));
+console.log('approvals pending', db.approvals.filter(a=>a.status==='pending').map(a=>a.title).join(' | '));
+// actions test
+const ctx = { user: 'Test', role: 'cfo' as const, date: '2026-09-23', time: '12:00:00' };
+const ap1 = db.approvals.find(a=>a.status==='pending' && a.kind==='purchase_order')!;
+runAction(db, 'approval.decide', { id: ap1.id, decision: 'approved' }, ctx);
+const po = db.purchaseOrders.find(p=>p.id===ap1.payload.refId)!; console.log('po status', po.status);
+runAction(db, 'po.receive', { id: po.id }, ctx); runAction(db, 'po.bill', { id: po.id, ref: 'X1' }, ctx); console.log('po', po.status);
+const so = db.salesOrders.find(x=>x.status==='confirmed' && x.companyId==='trd')!;
+runAction(db, 'so.deliver', { id: so.id }, ctx); const inv: any = runAction(db, 'so.invoice', { id: so.id }, ctx); console.log('inv', inv.no, inv.total);
+runAction(db, 'pay.receipt', { date: '2026-09-23', companyId: 'trd', branchId: 'tas', customerId: so.customerId, amount: inv.total, account: '5110', allocations: [{ docId: inv.id, amount: inv.total }] }, ctx);
+console.log('so', so.status);
+const wo = db.workOrders.find(w=>w.status==='qc')!; runAction(db, 'wo.complete', { id: wo.id }, ctx); console.log('wo', wo.status, wo.materialCost, wo.conversionCost);
+try { runAction(db, 'je.manual', { date: '2026-09-23', companyId: 'trd', branchId: 'tas', memo: 'x', lines: [{ account: '9411', debit: 100, credit: 0 }, { account: '5110', debit: 0, credit: 90 }] }, ctx); } catch (e: any) { console.log('unbalanced rejected:', e.message); }
+try { runAction(db, 'je.manual', { date: '2026-06-10', companyId: 'trd', branchId: 'tas', memo: 'x', lines: [{ account: '9411', debit: 100, credit: 0 }, { account: '5110', debit: 0, credit: 100 }] }, ctx); } catch (e: any) { console.log('closed period rejected:', e.message); }
+const { balanceSheet, trialBalance } = require('../src/lib/core/ledger');
+db.entries = [...db.entries];
+console.log('BS balanced', balanceSheet(db.entries, s, '2026-09-23').balanced, 'TB', trialBalance(db.entries, s, '2026-01-01', '2026-09-23').balanced);
+console.log('audit', db.audit.length, db.audit.slice(-3).map(a=>a.action+' '+a.record).join(' | '));

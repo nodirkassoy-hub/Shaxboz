@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─── Design tokens ────────────────────────────────────────────
+   Two themes share one semantic palette. Components use the
+   semantic classes below (bg-app, surface, text-1 …) so that the
+   entire UI switches theme without per-component conditionals. */
+:root {
+  --bg: #f4f6fb;
+  --bg-grad-1: rgba(99, 102, 241, 0.10);
+  --bg-grad-2: rgba(16, 185, 129, 0.06);
+  --surface: rgba(255, 255, 255, 0.78);
+  --surface-solid: #ffffff;
+  --surface-2: rgba(241, 245, 249, 0.85);
+  --surface-3: #eef2f7;
+  --border: rgba(15, 23, 42, 0.08);
+  --border-strong: rgba(15, 23, 42, 0.14);
+  --text-1: #0b1220;
+  --text-2: #475569;
+  --text-3: #8492a6;
+  --accent: #5b5bf0;
+  --accent-2: #7c6cf6;
+  --accent-soft: rgba(91, 91, 240, 0.10);
+  --pos: #059669;
+  --neg: #dc2626;
+  --warn: #d97706;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -12px rgba(15, 23, 42, 0.12);
+  --shadow-lg: 0 24px 60px -20px rgba(15, 23, 42, 0.25);
+  --glass-hi: rgba(255, 255, 255, 0.9);
+  --chart-grid: rgba(15, 23, 42, 0.06);
+  --chart-text: #8492a6;
+  color-scheme: light;
+}
+.dark {
+  --bg: #070a12;
+  --bg-grad-1: rgba(99, 102, 241, 0.16);
+  --bg-grad-2: rgba(16, 185, 129, 0.07);
+  --surface: rgba(17, 22, 35, 0.72);
+  --surface-solid: #0f1420;
+  --surface-2: rgba(255, 255, 255, 0.035);
+  --surface-3: #161c2b;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --text-1: #eef2f8;
+  --text-2: #a3aec2;
+  --text-3: #6b778c;
+  --accent: #7b7bff;
+  --accent-2: #9d8cff;
+  --accent-soft: rgba(123, 123, 255, 0.13);
+  --pos: #34d399;
+  --neg: #f87171;
+  --warn: #fbbf24;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 30px -14px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 30px 80px -20px rgba(0, 0, 0, 0.7);
+  --glass-hi: rgba(255, 255, 255, 0.06);
+  --chart-grid: rgba(255, 255, 255, 0.05);
+  --chart-text: #6b778c;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-app: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-solid: var(--surface-solid);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-t1: var(--text-1);
+  --color-t2: var(--text-2);
+  --color-t3: var(--text-3);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-accent-soft: var(--accent-soft);
+  --color-pos: var(--pos);
+  --color-neg: var(--neg);
+  --color-warn: var(--warn);
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --shadow-card: var(--shadow);
+  --shadow-pop: var(--shadow-lg);
+}
+
+html, body { background: var(--bg); color: var(--text-1); }
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv11', 'ss01', 'tnum';
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(900px 520px at 12% -8%, var(--bg-grad-1), transparent 60%),
+    radial-gradient(700px 480px at 100% 0%, var(--bg-grad-2), transparent 60%);
+}
+
+/* ─── Surfaces ──────────────────────────────────────────────── */
+.glass {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+.glass-hi { position: relative; }
+.glass-hi::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, var(--glass-hi), transparent 42%); opacity: .55; mix-blend-mode: soft-light;
+}
+.solid { background: var(--surface-solid); border: 1px solid var(--border); }
+.num { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+.focus-ring:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:where(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 10px; }
+
+@layer components {
+.field {
+  width: 100%; border-radius: 12px; padding: 0.55rem 0.75rem; font-size: 0.875rem;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-1);
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.field:hover { border-color: var(--border-strong); }
+.field:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.field::placeholder { color: var(--text-3); }
+select.field { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238492a6' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right .6rem center; padding-right: 2rem; }
+.dark select.field option { background: #0f1420; }
+.field.h-7, .field.h-8, .field.h-9 { padding-top: 0; padding-bottom: 0; }
+.field.h-7, .field.h-8 { font-size: 12px; }
+}
+
+/* ─── Scrollbars ────────────────────────────────────────────── */
+.thin-scroll { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+.thin-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.thin-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+.no-scrollbar { scrollbar-width: none; } .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ─── Motion ────────────────────────────────────────────────── */
+@keyframes rise { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+@keyframes pop { from { opacity: 0; transform: scale(.97) translateY(4px) } to { opacity: 1; transform: none } }
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes slide-in-r { from { transform: translateX(24px); opacity: 0 } to { transform: none; opacity: 1 } }
+@keyframes shimmer { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
+@keyframes pulse-dot { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+@keyframes draw { from { stroke-dashoffset: 60 } to { stroke-dashoffset: 0 } }
+@keyframes check { 0% { transform: scale(.6); opacity: 0 } 60% { transform: scale(1.1); opacity: 1 } 100% { transform: scale(1) } }
+.anim-rise { animation: rise .35s cubic-bezier(.2,.7,.2,1) both; }
+.anim-pop { animation: pop .22s cubic-bezier(.2,.7,.2,1) both; }
+.anim-fade { animation: fade .2s ease both; }
+.anim-slide { animation: slide-in-r .28s cubic-bezier(.2,.7,.2,1) both; }
+.anim-check { animation: check .45s cubic-bezier(.2,.7,.2,1) both; }
+.stagger > * { animation: rise .4s cubic-bezier(.2,.7,.2,1) both; }
+.stagger > *:nth-child(2) { animation-delay: .03s } .stagger > *:nth-child(3) { animation-delay: .06s } .stagger > *:nth-child(4) { animation-delay: .09s }
+.stagger > *:nth-child(5) { animation-delay: .12s } .stagger > *:nth-child(6) { animation-delay: .15s } .stagger > *:nth-child(7) { animation-delay: .18s } .stagger > *:nth-child(n+8) { animation-delay: .2s }
+.skeleton { background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 10px; }
+.live-dot { animation: pulse-dot 1.8s infinite; }
+.lift { transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+.lift:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: var(--border-strong); }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* Recharts polish */
+.recharts-cartesian-grid line { stroke: var(--chart-grid); }
+.recharts-text { fill: var(--chart-text); font-size: 11px; }
+.recharts-default-tooltip { border-radius: 12px !important; }
+.recharts-surface:focus, .recharts-wrapper:focus, .recharts-sector:focus { outline: none; }
+
+@media print {
+  .no-print { display: none !important; }
+  body::before { display: none; }
+  .glass { backdrop-filter: none; box-shadow: none; background: #fff; }
+}
