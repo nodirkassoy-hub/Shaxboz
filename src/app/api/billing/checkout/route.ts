@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createInvoice, type PaymentMethod } from '@/lib/billing';
 import { planOf } from '@/lib/config/pricing';
-import { decodeSession, encodeSession, sessionCookie, todayTashkent, rateLimit, clientIp, SESSION_COOKIE } from '@/lib/billing/server';
+import { loadAccount, todayTashkent, rateLimit, clientIp } from '@/lib/billing/server';
+import { store, audit } from '@/lib/billing/persist';
 import { createPayment } from '@/lib/billing/providers';
 import { validateCheckout } from '@/lib/validation';
 import type { Account } from '@/lib/billing';
@@ -16,12 +17,8 @@ import type { Cycle, PlanId } from '@/lib/config/pricing';
  */
 export const dynamic = 'force-dynamic';
 
-const cookieToken = (req: Request) =>
-  req.headers.get('cookie')?.split(';').map((c) => c.trim()).find((c) => c.startsWith(`${SESSION_COOKIE}=`))?.split('=').slice(1).join('=');
-
 export async function POST(req: Request) {
-  const token = cookieToken(req);
-  const acc = decodeSession(token);
+  const acc = await loadAccount(req);
   if (!acc) return NextResponse.json({ ok: false, error: 'Avval tizimga kiring (sinov hisobi oching).' }, { status: 401 });
 
   const url = new URL(req.url);
@@ -29,7 +26,7 @@ export async function POST(req: Request) {
 
   // ── Tasdiqlash (faqat test rejimida yoki webhook orqali) ──
   if (confirmId) {
-    return confirm(acc, confirmId, req);
+    return await confirm(acc, confirmId, req);
   }
 
   const rl = rateLimit(`checkout:${clientIp(req)}`, 10, 60_000);
@@ -50,6 +47,8 @@ export async function POST(req: Request) {
   const today = todayTashkent();
   const inv = createInvoice(acc, planId, cycle, method, today, true);
   acc.invoices.unshift(inv);
+  await store.put(acc);
+  await audit({ accountId: acc.id, actor: acc.user.email, action: 'invoice.create', target: inv.no, detail: { planId, cycle, method, amount: inv.amount } });
   const intent = await createPayment(method, { amount: inv.amount, invoiceNo: inv.no, planName: planOf(planId).name });
 
   return NextResponse.json(
@@ -62,12 +61,12 @@ export async function POST(req: Request) {
         ? 'TEST REJIMI: haqiqiy pul yechilmaydi. To‘lovni tasdiqlash uchun “Test to‘lovni tasdiqlash” tugmasini bosing.'
         : 'To‘lov sahifasiga yo‘naltirilasiz.',
     },
-    { status: 201, headers: { 'set-cookie': sessionCookie(encodeSession(acc)), 'cache-control': 'no-store' } },
+    { status: 201, headers: { 'cache-control': 'no-store' } },
   );
 }
 
 /** Test rejimida to‘lovni tasdiqlash — obuna shu yerda faollashadi. */
-function confirm(acc: Account, invoiceId: string, req: Request) {
+async function confirm(acc: Account, invoiceId: string, req: Request) {
   const rl = rateLimit(`confirm:${clientIp(req)}`, 20, 60_000);
   if (!rl.ok) return NextResponse.json({ ok: false, error: 'Juda ko‘p urinish.' }, { status: 429 });
 
@@ -92,9 +91,11 @@ function confirm(acc: Account, invoiceId: string, req: Request) {
     periodEnd: addCycle(today, inv.cycle),
     cancelledAt: undefined,
   };
+  await store.put(acc);
+  await audit({ accountId: acc.id, actor: acc.user.email, action: 'payment.confirm_test', target: inv.no, detail: { planId: inv.planId, cycle: inv.cycle, amount: inv.amount } });
   return NextResponse.json(
     { ok: true, invoice: inv, subscription: acc.subscription, testMode: true },
-    { headers: { 'set-cookie': sessionCookie(encodeSession(acc)), 'cache-control': 'no-store' } },
+    { headers: { 'cache-control': 'no-store' } },
   );
 }
 

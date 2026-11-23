@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
-import { rateLimit, clientIp, decodeSession, SESSION_COOKIE } from '@/lib/billing/server';
+import { rateLimit, clientIp, encodeSession, sessionCookie } from '@/lib/billing/server';
+import { store, audit } from '@/lib/billing/persist';
 import { emailError, sanitize } from '@/lib/validation';
 
 /**
  * POST /api/billing/login
  *
- * Demo qatlamida autentifikatsiya sessiya cookie'si orqali tiklanadi
- * (parol tekshiruvi PostgreSQL + argon2 ulanganda qo‘shiladi).
- * Brute-force himoyasi: 10 urinish / 5 daqiqa / IP.
+ * Email + parol tekshiriladi (scrypt hash serverda). Muvaffaqiyatli bo‘lsa
+ * `acc_xxx` identifikatori imzolangan HttpOnly cookie'ga yoziladi.
+ * Brute-force himoyasi: 10 urinish / 5 daqiqa / IP + email bo‘yicha 5 urinish.
  */
 export const dynamic = 'force-dynamic';
 
@@ -25,14 +26,27 @@ export async function POST(req: Request) {
   if (typeof body.password !== 'string' || body.password.length < 8) {
     return NextResponse.json({ ok: false, error: 'Parol kamida 8 belgi bo‘lishi kerak.' }, { status: 422 });
   }
-  // Mavjud sessiya bo‘lsa — uni qaytaramiz (demo rejim)
-  const token = req.headers.get('cookie')?.split(';').map((c) => c.trim()).find((c) => c.startsWith(`${SESSION_COOKIE}=`))?.split('=').slice(1).join('=');
-  const acc = decodeSession(token);
-  if (acc && acc.user.email === email) {
-    return NextResponse.json({ ok: true, account: { id: acc.id, company: acc.company.name, email: acc.user.email } }, { headers: { 'cache-control': 'no-store' } });
+  // Email bo‘yicha ham limit — tarqoq IP'lardan parol terishning oldini oladi.
+  const perEmail = rateLimit(`login:email:${email}`, 5, 5 * 60_000);
+  if (!perEmail.ok) {
+    return NextResponse.json({ ok: false, error: `Juda ko‘p urinish. ${perEmail.retryAfter} soniyadan so‘ng qayta urinib ko‘ring.` }, { status: 429, headers: { 'retry-after': String(perEmail.retryAfter) } });
   }
+
+  const id = await store.verifyPassword(email, body.password as string);
+  if (!id) {
+    // Email bormi-yo‘qmi — bir xil javob (hisoblar mavjudligini oshkor qilmaymiz).
+    const exists = await store.findByEmail(email);
+    await audit({ accountId: exists?.id, actor: email, action: 'auth.login_failed' });
+    return NextResponse.json(
+      { ok: false, error: exists ? 'Parol noto‘g‘ri.' : 'Email yoki parol noto‘g‘ri. Hisobingiz yo‘q bo‘lsa — 30 kunlik bepul sinovni boshlang.' },
+      { status: 401 },
+    );
+  }
+  const acc = await store.get(id);
+  if (!acc) return NextResponse.json({ ok: false, error: 'Hisob topilmadi.' }, { status: 404 });
+  await audit({ accountId: acc.id, actor: email, action: 'auth.login' });
   return NextResponse.json(
-    { ok: false, error: 'Bu email bilan hisob topilmadi. Avval 30 kunlik bepul sinovni boshlang.' },
-    { status: 404 },
+    { ok: true, account: { id: acc.id, company: acc.company.name, email: acc.user.email, trialEndsAt: acc.trialEndsAt } },
+    { headers: { 'set-cookie': sessionCookie(encodeSession(acc.id)), 'cache-control': 'no-store' } },
   );
 }

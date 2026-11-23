@@ -1,7 +1,9 @@
 import type { MetadataRoute } from 'next';
 
-/** Ommaviy sahifalar xaritasi. Yopiq bo‘limlar (app/account/checkout) kirmaydi. */
-export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://shaxboz-mu.vercel.app';
+import { SITE_URL } from '@/lib/config/site';
+
+/** Ommaviy sahifalar xaritasi. Yopiq bo‘limlar (app/account/checkout/subscription) kirmaydi. */
+export { SITE_URL };
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();

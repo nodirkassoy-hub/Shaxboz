@@ -17,6 +17,7 @@
  */
 import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
 import type { Account } from './index';
+import { store } from './persist';
 
 export const TZ = 'Asia/Tashkent';
 export const TZ_OFFSET_MIN = 5 * 60;
@@ -64,14 +65,18 @@ function sign(payload: string): string {
   return b64u(createHmac('sha256', secret()).update(payload).digest());
 }
 
-/** Sessiya tokenini yasash: `base64(payload).hmac` */
-export function encodeSession(acc: Account): string {
-  const body = b64u(JSON.stringify(acc));
+/**
+ * Sessiya tokeni — **faqat hisob identifikatori** (va berilgan vaqt).
+ * Sinov sanasi, tarif, limitlar bu yerda emas: ular `store`dan o‘qiladi.
+ * Shuning uchun cookie'ni o‘zgartirish (imzo buzilmasa ham) hech narsa bermaydi.
+ */
+export function encodeSession(accId: string, now = Date.now()): string {
+  const body = b64u(JSON.stringify({ id: accId, iat: Math.floor(now / 1000) }));
   return `${body}.${sign(body)}`;
 }
 
-/** Tokenni tekshirish va hisobni qaytarish (buzilgan bo‘lsa null). */
-export function decodeSession(token: string | undefined | null): Account | null {
+/** Tokendan hisob ID'sini olish (imzo buzilgan bo‘lsa null). */
+export function decodeSessionId(token: string | undefined | null): string | null {
   if (!token) return null;
   const [body, mac] = token.split('.');
   if (!body || !mac) return null;
@@ -80,12 +85,23 @@ export function decodeSession(token: string | undefined | null): Account | null 
   const b = Buffer.from(expected);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   try {
-    const acc = JSON.parse(unb64u(body).toString('utf8')) as Account;
-    if (!acc?.id || !acc?.trialEndsAt || !acc?.subscription) return null;
-    return acc;
+    const payload = JSON.parse(unb64u(body).toString('utf8')) as { id?: string };
+    return typeof payload?.id === 'string' && /^acc_[\w]{4,64}$/.test(payload.id) ? payload.id : null;
   } catch {
     return null;
   }
+}
+
+/** So‘rov cookie'sidan token. */
+export function tokenFromRequest(req: Request): string | undefined {
+  return req.headers.get('cookie')?.split(';').map((c) => c.trim()).find((c) => c.startsWith(`${COOKIE}=`))?.split('=').slice(1).join('=');
+}
+
+/** So‘rovdan hisobni yuklash (serverdagi saqlash qatlamidan). */
+export async function loadAccount(req: Request): Promise<Account | null> {
+  const id = decodeSessionId(tokenFromRequest(req));
+  if (!id) return null;
+  return store.get(id);
 }
 
 export const SESSION_COOKIE = COOKIE;

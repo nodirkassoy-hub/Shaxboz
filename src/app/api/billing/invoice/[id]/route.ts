@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { decodeSession, SESSION_COOKIE } from '@/lib/billing/server';
+import { loadAccount } from '@/lib/billing/server';
 import { planOf } from '@/lib/config/pricing';
 import { PAYMENT_METHODS } from '@/lib/billing';
 
@@ -15,8 +15,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const token = req.headers.get('cookie')?.split(';').map((c) => c.trim()).find((c) => c.startsWith(`${SESSION_COOKIE}=`))?.split('=').slice(1).join('=');
-  const acc = decodeSession(token);
+  const acc = await loadAccount(req);
   if (!acc) return NextResponse.json({ error: 'Avval tizimga kiring.' }, { status: 401 });
 
   const inv = acc.invoices.find((i) => i.id === id);

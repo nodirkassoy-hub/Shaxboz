@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAccount } from '@/lib/billing';
 import { todayTashkent, encodeSession, sessionCookie, rateLimit, clientIp, newId } from '@/lib/billing/server';
+import { store, audit } from '@/lib/billing/persist';
 import { validateSignup } from '@/lib/validation';
 
 /**
@@ -39,16 +40,31 @@ export async function POST(req: Request) {
     today,
   });
   acc.id = newId('acc');
+
+  // Bir email — bitta hisob (takroriy sinov ochishning oldini oladi).
+  const exists = await store.findByEmail(v.value.email);
+  if (exists) {
+    return NextResponse.json(
+      { ok: false, errors: [{ field: 'email', message: 'Bu email bilan hisob allaqachon mavjud. Tizimga kiring.' }], code: 'email_taken' },
+      { status: 409 },
+    );
+  }
   // Parol hash'i hech qachon qaytarilmaydi va saqlanmaydi (demo qatlam).
   // PostgreSQL ulanganda: argon2id hash → users.password_hash.
 
-  const token = encodeSession(acc);
+  // Hisob va parol hash'i serverda saqlanadi; cookie faqat identifikator.
+  await store.put(acc);
+  await store.setPassword(acc.id, v.value.email, v.value.password);
+  await audit({ accountId: acc.id, actor: acc.user.email, action: 'account.signup', detail: { company: acc.company.name, trialEndsAt: acc.trialEndsAt } });
+
+  const token = encodeSession(acc.id);
   return NextResponse.json(
     {
       ok: true,
       account: { id: acc.id, company: acc.company.name, email: acc.user.email, trialEndsAt: acc.trialEndsAt },
       trial: { days: 30, endsAt: acc.trialEndsAt, cardRequired: false },
       testMode: true,
+      persisted: store.driver,
     },
     { status: 201, headers: { 'set-cookie': sessionCookie(token), 'cache-control': 'no-store' } },
   );

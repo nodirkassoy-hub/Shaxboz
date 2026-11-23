@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { SITE_URL } from './sitemap';
+import { SITE_URL, NOINDEX_PATHS } from '@/lib/config/site';
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -8,7 +8,7 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: '*',
         allow: '/',
         // Yopiq (autentifikatsiya talab qiladigan) bo‘limlar indekslanmasin
-        disallow: ['/app', '/account', '/checkout', '/api/'],
+        disallow: NOINDEX_PATHS,
       },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,

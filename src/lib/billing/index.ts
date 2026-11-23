@@ -53,7 +53,7 @@ export interface Subscription {
 
 export interface Account {
   id: string;
-  company: { name: string; stir: string; phone: string; email: string };
+  company: { name: string; stir: string; phone: string; email: string; address?: string; bank?: string };
   user: { name: string; email: string; phone: string };
   createdAt: string;
   trialEndsAt: string;

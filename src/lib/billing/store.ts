@@ -238,6 +238,25 @@ export const useBilling = create<BillingStore>((set, get) => ({
     if (e.users !== null && acc.team.length >= e.users) return { ok: false, error: `Tarif bo‘yicha ${e.users} foydalanuvchi. Qo‘shimcha foydalanuvchi — 29 000 so‘m/oy.` };
     acc.team = [...acc.team, { id: `u${Date.now()}`, name: m.name, email: m.email.trim().toLowerCase(), role: m.role, status: 'invited' }];
     save(acc); set({ account: { ...acc } });
+    // Server ham tekshiradi va saqlaydi (limit serverda ham majburiy).
+    void (async () => {
+      try {
+        const res = await fetch('/api/billing/team', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: m.name, email: m.email, role: m.role }),
+        });
+        if (res.status === 401) return; // hisobsiz demo rejim — faqat lokal
+        if (!res.ok) {
+          const d = (await res.json().catch(() => ({}))) as { error?: string };
+          // Server rad etdi — lokal o‘zgarishni qaytaramiz
+          const cur = get().account;
+          if (cur) { cur.team = cur.team.filter((t) => t.email !== m.email.trim().toLowerCase()); save(cur); set({ account: { ...cur } }); }
+          set({ serverError: d.error || 'Foydalanuvchi qo‘shilmadi.' });
+          return;
+        }
+        await get().syncServer();
+      } catch { /* tarmoq yo‘q — lokal holat saqlanadi */ }
+    })();
     return { ok: true };
   },
 
@@ -245,6 +264,7 @@ export const useBilling = create<BillingStore>((set, get) => ({
     const acc = get().account; if (!acc || acc.team.length <= 1) return;
     acc.team = acc.team.filter((t) => t.id !== id);
     save(acc); set({ account: { ...acc } });
+    void fetch(`/api/billing/team?userId=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => undefined);
   },
 
   askAi: () => {
@@ -256,14 +276,21 @@ export const useBilling = create<BillingStore>((set, get) => ({
 
   setProfile: (p) => {
     const acc = get().account; if (!acc) return;
-    acc.company = { ...acc.company, ...p };
-    if (p.userName) acc.user = { ...acc.user, name: p.userName };
+    const { userName, ...company } = p;
+    acc.company = { ...acc.company, ...company };
+    if (userName) acc.user = { ...acc.user, name: userName };
     save(acc); set({ account: { ...acc } });
+    void fetch('/api/billing/settings', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p),
+    }).catch(() => undefined);
   },
 
   setVat: (v) => {
     const acc = get().account; if (!acc) return;
     acc.vatEnabled = v; save(acc); set({ account: { ...acc } });
+    void fetch('/api/billing/settings', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ vatEnabled: v }),
+    }).catch(() => undefined);
   },
 
   /** Demo: sinovdan qolgan kunlarni o‘zgartirish (7/3/1 kun eslatmalarini sinash uchun). */

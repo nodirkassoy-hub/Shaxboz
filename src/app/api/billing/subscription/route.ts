@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { decodeSession, todayTashkent, nowTashkent, SESSION_COOKIE } from '@/lib/billing/server';
+import { loadAccount, todayTashkent, nowTashkent } from '@/lib/billing/server';
 import { entitlements } from '@/lib/billing';
 import { TRIAL_DAYS, GRACE_DAYS, DATA_RETENTION_DAYS } from '@/lib/config/pricing';
 
@@ -12,9 +12,8 @@ import { TRIAL_DAYS, GRACE_DAYS, DATA_RETENTION_DAYS } from '@/lib/config/pricin
  */
 export const dynamic = 'force-dynamic';
 
-export function GET(req: Request) {
-  const token = req.headers.get('cookie')?.split(';').map((c) => c.trim()).find((c) => c.startsWith(`${SESSION_COOKIE}=`))?.split('=').slice(1).join('=');
-  const acc = decodeSession(token);
+export async function GET(req: Request) {
+  const acc = await loadAccount(req);
   const today = todayTashkent();
   if (!acc) {
     return NextResponse.json(

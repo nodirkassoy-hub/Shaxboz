@@ -17,7 +17,8 @@ import { simulate } from '../src/lib/seed/simulate';
 import { TODAY } from '../src/lib/core/dates';
 import { accountState, entitlements, createAccount, createInvoice, PAYMENT_METHODS } from '../src/lib/billing';
 import { TRIAL_DAYS, GRACE_DAYS, PLANS, priceOf, splitVat, VAT_RATE } from '../src/lib/config/pricing';
-import { todayTashkent, daysBetween, encodeSession, decodeSession, rateLimit, __resetRateLimits, nowTashkent } from '../src/lib/billing/server';
+import { todayTashkent, daysBetween, encodeSession, decodeSessionId, rateLimit, __resetRateLimits, nowTashkent } from '../src/lib/billing/server';
+import { hashPassword, checkPassword } from '../src/lib/billing/persist';
 import { emailError, phoneError, passwordError, sanitize, validateSignup, escapeHtml } from '../src/lib/validation';
 import { i18nParity } from '../src/lib/i18n';
 import { money, moneyC } from '../src/lib/core/money';
@@ -192,16 +193,24 @@ section('Tarjimalar');
 section('Sessiya va limitlar');
 {
   const acc = createAccount({ company: 'Sess MChJ', name: 'Sess Testov', phone: '+998901112233', email: 's@b.uz', today: '2026-01-01' });
-  const token = encodeSession(acc);
-  const back = decodeSession(token);
-  eq('Sessiya: hisob tiklandi', back?.id, acc.id);
-  ok('Buzilgan token rad etiladi', decodeSession(`${token}x`) === null);
-  ok('Bo‘sh token rad etiladi', decodeSession('') === null && decodeSession(undefined) === null);
-  ok('Imzosiz token rad etiladi', decodeSession('eyJhIjoxfQ') === null);
+  const token = encodeSession(acc.id);
+  eq('Sessiya: hisob ID tiklandi', decodeSessionId(token), acc.id);
+  ok('Buzilgan token rad etiladi', decodeSessionId(`${token}x`) === null);
+  ok('Bo‘sh token rad etiladi', decodeSessionId('') === null && decodeSessionId(undefined) === null);
+  ok('Imzosiz token rad etiladi', decodeSessionId('eyJhIjoxfQ') === null);
+  ok('Formatga mos bo‘lmagan ID rad etiladi', decodeSessionId(encodeSession('hacker')) === null);
   // Boshqa kalit bilan imzolangan token
   process.env.SESSION_SECRET = 'boshqa-kalit-1234567890';
-  ok('Boshqa kalit bilan imzo rad etiladi', decodeSession(token) === null);
+  ok('Boshqa kalit bilan imzo rad etiladi', decodeSessionId(token) === null);
   delete process.env.SESSION_SECRET;
+
+  // Parol hash'i — scrypt, tuz bilan, teskari qaytarilmaydi
+  const h = hashPassword('Parol123!');
+  ok('Parol hash formati scrypt', h.startsWith('scrypt$'));
+  ok('Parol to‘g‘ri tekshiriladi', checkPassword('Parol123!', h));
+  ok('Noto‘g‘ri parol rad etiladi', !checkPassword('Parol123', h));
+  ok('Har bir hash uchun alohida tuz', hashPassword('x') !== hashPassword('x'));
+  ok('Buzilgan hash rad etiladi', !checkPassword('x', 'buzilgan'));
 
   __resetRateLimits();
   const results = Array.from({ length: 5 }, () => rateLimit('t:1', 3, 60_000));
