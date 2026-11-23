@@ -4,12 +4,15 @@ import { useApp } from '@/lib/store';
 import { can } from '@/lib/rbac';
 import { cx } from '@/components/ui';
 import { useBadges } from './Sidebar';
+import { useBilling, useEntitlements } from '@/lib/billing/store';
 import type { ModuleId } from '@/lib/types';
 
 // Mobile priority: Dashboard · AI CFO · Approvals · Cash · (more → Sales, Inventory, Notifications …)
 export function MobileNav() {
   const { nav, go, role, setMobileMenu } = useApp();
   const badges = useBadges();
+  const ent = useEntitlements();
+  const canUse = (m: ModuleId) => ent.modules === 'all' || ent.modules.includes(m);
   const items: { id: ModuleId; label: string; icon: typeof Menu; tab?: string }[] = [
     { id: 'dashboard', label: 'Asosiy', icon: LayoutDashboard },
     { id: 'approvals', label: 'Tasdiq', icon: CheckCheck },
@@ -26,6 +29,7 @@ export function MobileNav() {
               {i.id === 'ai' ? <span className={cx('-mt-5 grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-accent to-accent-2 text-white shadow-[0_8px_24px_-6px_var(--accent)]')}><Icon className="h-5 w-5" /></span> : <Icon className="h-5 w-5" />}
               {i.label}
               {b ? <span className="num absolute right-[22%] top-1.5 rounded-full bg-neg px-1 text-[9px] font-bold leading-[14px] text-white">{b}</span> : null}
+              {!canUse(i.id) ? <span className="absolute right-[26%] top-1.5 h-1.5 w-1.5 rounded-full bg-warn" aria-label="Tarifda yopiq" /> : null}
             </button>
           );
         })}

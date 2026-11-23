@@ -120,7 +120,7 @@ function SODrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const { db, mf } = useCtx(); const { dispatch, role, go } = useApp();
   const [pay, setPay] = useState(false); const [prod, setProd] = useState(false); const [cancel, setCancel] = useState(false);
   const so = byId(db.salesOrders, id); if (!so) return null;
-  const cust = byId(db.parties, so.customerId)!; const t = docTotals(so.lines); const inv = byId(db.invoices, so.invoiceId);
+  const cust = byId(db.parties, so.customerId); const t = docTotals(so.lines); if (!cust) return null; const inv = byId(db.invoices, so.invoiceId);
   const idx = FLOW.findIndex((f) => f.id === so.status);
   const shortage = so.lines.filter((l) => l.productId && byId(db.products, l.productId)?.kind !== 'service' && peek(db.stock, l.productId, so.warehouseId).qty < l.qty);
   const isFac = so.companyId === 'fac';

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, lazy, Suspense, useState } from 'react';
 import { useApp } from '@/lib/store';
 import { can } from '@/lib/rbac';
 import { useT } from '@/lib/i18n';
@@ -9,8 +9,11 @@ import { MobileNav } from './MobileNav';
 import { GlobalSearch } from './GlobalSearch';
 import { Toaster, Empty, Skeleton, Button, cx } from '@/components/ui';
 import { LogoMark } from './Logo';
-import { Lock, Sparkles } from 'lucide-react';
+import { Lock, Sparkles, AlertTriangle, RefreshCw, WifiOff } from 'lucide-react';
 import type { ModuleId } from '@/lib/types';
+import { useBilling } from '@/lib/billing/store';
+import { UpgradeGate } from '@/components/billing/UpgradeGate';
+import { TrialBar } from '@/components/billing/TrialBar';
 
 // Lazy-loaded modules (code-splitting per module)
 const MODULES: Record<ModuleId, React.LazyExoticComponent<React.ComponentType>> = {
@@ -47,35 +50,79 @@ function PageSkeleton() {
   );
 }
 
-function Boot() {
+/** Yuklanish holati — 300 ms dan keyin progress ko‘rsatiladi, skeleton 1 s ichida almashadi. */
+function Boot({ slow }: { slow: boolean }) {
   return (
-    <div className="grid min-h-screen place-items-center">
-      <div className="flex flex-col items-center gap-4">
-        <div className="anim-pop"><LogoMark size={56} /></div>
-        <div className="text-[15px] font-semibold text-t1">BALANS AI</div>
-        <div className="text-[12.5px] text-t3">Demo kompaniya ma’lumotlari hisoblanmoqda…</div>
-        <div className="h-1 w-48 overflow-hidden rounded-full bg-surface-3"><div className="skeleton h-full w-full" /></div>
+    <div className="grid min-h-screen place-items-center px-4">
+      <div className="w-full max-w-sm text-center">
+        <div className="mx-auto anim-pop"><LogoMark size={52} /></div>
+        <div className="mt-4 text-[15px] font-semibold text-t1">BALANS AI</div>
+        <div className="mt-1 text-[12.5px] text-t3">{slow ? 'Demo ma’lumotlar yuklanmoqda…' : 'Ish stoli tayyorlanmoqda…'}</div>
+        <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-surface-3"><div className="skeleton h-full w-2/3" /></div>
+        <div className="mt-6 space-y-2 opacity-60">
+          <div className="grid grid-cols-3 gap-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
+          <Skeleton className="h-24" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoadError({ message, detail, onRetry }: { message: string; detail?: string | null; onRetry: () => void }) {
+  return (
+    <div className="grid min-h-screen place-items-center px-4">
+      <div className="w-full max-w-md rounded-3xl border border-line bg-surface-solid p-6 text-center shadow-pop">
+        <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-neg/10 text-neg"><WifiOff className="h-6 w-6" /></div>
+        <h1 className="mt-4 text-[17px] font-semibold text-t1">Ma’lumotlarni yuklab bo‘lmadi</h1>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-t2">{message}</p>
+        {detail && <p className="mt-2 break-words rounded-xl bg-surface-2 p-2 font-mono text-[11px] text-t3">{detail}</p>}
+        <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
+          <Button variant="primary" size="md" icon={<RefreshCw className="h-4 w-4" />} onClick={onRetry}>Qayta urinish</Button>
+          <Button size="md" onClick={() => window.location.reload()}>Sahifani yangilash</Button>
+        </div>
+        <p className="mt-4 text-[11.5px] leading-relaxed text-t3">Muammo davom etsa: internet aloqasini tekshiring yoki <a href="/contact" className="text-accent hover:underline">qo‘llab-quvvatlashga</a> yozing.</p>
       </div>
     </div>
   );
 }
 
 export function App() {
-  const { ready, init, nav, role, sidebarCollapsed, aiOpen, openAi, go } = useApp();
+  const { status, error, errorDetail, init, retry, nav, role, sidebarCollapsed, aiOpen, openAi, go, readOnly } = useApp();
   const t = useT();
-  useEffect(() => { const id = setTimeout(init, 10); return () => clearTimeout(id); }, [init]);
+  const initBilling = useBilling((s) => s.init);
+  const [slow, setSlow] = useState(false);
+
+  useEffect(() => { void initBilling(); }, [initBilling]);
+  useEffect(() => { void init(); }, [init]);
+  useEffect(() => {
+    if (status !== 'loading') { setSlow(false); return; }
+    const id = setTimeout(() => setSlow(true), 350);
+    return () => clearTimeout(id);
+  }, [status]);
+
   useEffect(() => { (window as unknown as { __go: typeof go }).__go = go; }, [go]);
-  if (!ready) return <Boot />;
+
+  if (status === 'error') return <LoadError message={error || 'Noma’lum xatolik'} detail={errorDetail} onRetry={() => void retry()} />;
+  if (status !== 'ready') return <Boot slow={slow} />;
+
   const Mod = MODULES[nav.module];
-  const allowed = can(role, nav.module);
+  const roleAllowed = can(role, nav.module);
+  const planAllowed = useBilling.getState().canUse(nav.module);
   return (
     <div className="min-h-screen">
       <Sidebar />
       <div className={cx('transition-[padding] duration-300 md:pl-[76px]', !sidebarCollapsed && 'lg:pl-[256px]')}>
         <Topbar />
-        <main className="mx-auto max-w-[1600px] px-3 pb-28 pt-4 sm:px-5 md:pb-10 lg:px-7" key={nav.module + (nav.tab || '')}>
+        <main className="mx-auto max-w-[1600px] px-3 pb-28 pt-4 sm:px-5 md:pb-10 lg:px-7" key={nav.module + (nav.tab || '') + (readOnly ? '-ro' : '')}>
+          <TrialBar />
           <Suspense fallback={<PageSkeleton />}>
-            {allowed ? <Mod /> : <Empty icon={<Lock className="h-5 w-5" />} title={t('common.noAccess')} body="Joriy rolingiz uchun bu bo‘lim yopiq. Rolni profil menyusidan o‘zgartirishingiz mumkin (demo)." action={<Button onClick={() => go('dashboard')}>Boshqaruv paneliga qaytish</Button>} />}
+            {!roleAllowed ? (
+              <Empty icon={<Lock className="h-5 w-5" />} title={t('common.noAccess')} body="Joriy rolingiz uchun bu bo‘lim yopiq. Rolni profil menyusidan o‘zgartirishingiz mumkin (demo)." action={<Button onClick={() => go('dashboard')}>Boshqaruv paneliga qaytish</Button>} />
+            ) : !planAllowed ? (
+              <UpgradeGate module={nav.module} />
+            ) : (
+              <Mod />
+            )}
           </Suspense>
         </main>
       </div>
@@ -87,7 +134,23 @@ export function App() {
           <span className="relative grid h-7 w-7 place-items-center rounded-xl bg-white/15"><Sparkles className="h-4 w-4" /><span className="live-dot absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-emerald-300" /></span>AI CFO
         </button>
       )}
+      <UpgradeGate.Modal />
       <Toaster />
+    </div>
+  );
+}
+
+/** Ichki xato uchun zaxira UI (error boundary) — sahifa oq bo‘lib qolmasin. */
+export function AppError({ error, reset }: { error: Error; reset: () => void }) {
+  return (
+    <div className="grid min-h-screen place-items-center px-4">
+      <div className="w-full max-w-md rounded-3xl border border-line bg-surface-solid p-6 text-center shadow-pop">
+        <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-warn/10 text-warn"><AlertTriangle className="h-6 w-6" /></div>
+        <h1 className="mt-4 text-[17px] font-semibold text-t1">Kutilmagan xatolik</h1>
+        <p className="mt-1.5 text-[13px] text-t2">Sahifani qayta yuklab ko‘ring. Muammo takrorlansa, bizga xabar bering.</p>
+        <p className="mt-2 break-words rounded-xl bg-surface-2 p-2 font-mono text-[11px] text-t3">{error.message}</p>
+        <div className="mt-5"><Button variant="primary" size="md" icon={<RefreshCw className="h-4 w-4" />} onClick={reset}>Qayta urinish</Button></div>
+      </div>
     </div>
   );
 }

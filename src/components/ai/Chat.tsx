@@ -7,6 +7,7 @@ import { scopeOf } from '@/lib/analytics';
 import { cx, Badge, Delta, Button, Modal } from '@/components/ui';
 import { useT } from '@/lib/i18n';
 import { roleOf } from '@/lib/rbac';
+import { useBilling, useEntitlements } from '@/lib/billing/store';
 
 type Msg = { id: number; role: 'user' | 'ai'; text?: string; answer?: AiAnswer & { intent: string } };
 
@@ -30,6 +31,8 @@ export function Chat({ compact, initialPrompt }: { compact?: boolean; initialPro
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
   const [explain, setExplain] = useState<AiAnswer | null>(null);
+  const ent = useEntitlements();
+  const askQuota = useBilling((s) => s.askAi);
   const endRef = useRef<HTMLDivElement>(null);
   const s = useMemo(() => scopeOf(db, filters), [db, filters]);
   const sent = useRef(false);
@@ -37,6 +40,13 @@ export function Chat({ compact, initialPrompt }: { compact?: boolean; initialPro
   useEffect(() => { try { sessionStorage.setItem(STORE_KEY, JSON.stringify(msgs.slice(-30))); } catch { /* ignore */ } endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [msgs, thinking]);
   const send = (q: string) => {
     const text = q.trim(); if (!text || thinking) return;
+    // Tarif cheklovi: AI CFO savollar limiti (backendda ham tekshiriladi)
+    const quota = askQuota();
+    if (!quota.ok) {
+      setMsgs((m) => [...m, { id: seq++, role: 'user', text }, { id: seq++, role: 'ai', text: `⚠️ ${quota.error || 'Limit tugadi.'} Hisob sahifasida tarifni yangilang yoki keyingi oyni kuting.` }]);
+      setInput('');
+      return;
+    }
     setMsgs((m) => [...m, { id: seq++, role: 'user', text }]); setInput(''); setThinking(true);
     setTimeout(() => {
       const a = ask(db, s, filters.currency, { from: filters.from, to: filters.to }, text);
@@ -89,7 +99,7 @@ export function Chat({ compact, initialPrompt }: { compact?: boolean; initialPro
         {msgs.length > 0 && <div className="no-scrollbar mb-2 flex gap-1.5 overflow-x-auto">{SUGGESTED.slice(0, 8).map((q) => <button key={q} onClick={() => send(q)} className="shrink-0 rounded-lg border border-line bg-surface-2 px-2.5 py-1 text-[11.5px] text-t2 hover:text-t1">{q}</button>)}<button onClick={() => { setMsgs([]); }} className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] text-t3 hover:text-t1"><RotateCcw className="h-3 w-3" />Tozalash</button></div>}
         <form onSubmit={(e) => { e.preventDefault(); send(input); }} className="flex items-center gap-2 rounded-2xl border border-line bg-surface-2 p-1.5 pl-3.5 focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--accent-soft)]">
           <Sparkles className="h-4 w-4 shrink-0 text-accent" />
-          <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={t('ai.placeholder')} className="h-9 min-w-0 flex-1 bg-transparent text-[13.5px] text-t1 outline-none placeholder:text-t3" aria-label="AI savol" />
+          <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={ent.aiLeft === 0 ? 'Bu oy uchun savol limiti tugadi — tarifni yangilang' : t('ai.placeholder')} className="h-9 min-w-0 flex-1 bg-transparent text-[13.5px] text-t1 outline-none placeholder:text-t3" aria-label="AI savol" />
           <button type="submit" disabled={!input.trim() || thinking} className="grid h-9 w-9 place-items-center rounded-xl bg-accent text-white transition disabled:opacity-40" aria-label="Yuborish"><Send className="h-4 w-4" /></button>
         </form>
         <p className="mt-2 flex items-start gap-1.5 text-[10.5px] leading-snug text-t3"><ShieldCheck className="mt-px h-3 w-3 shrink-0" />AI javoblari DEMO ma’lumotlarga asoslangan va rasmiy moliyaviy/soliq maslahati emas. AI hech qachon buxgalteriya yozuvlarini o‘zi o‘zgartirmaydi — barcha takliflar tasdiqlashdan o‘tadi.</p>

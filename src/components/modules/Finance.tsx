@@ -86,7 +86,7 @@ function InvoiceDrawer({ inv, onClose, onPay }: { inv: Invoice; onClose: () => v
   const { db, mf } = useCtx(); const { role, dispatch, go } = useApp();
   const [cn, setCn] = useState(false); const [amt, setAmt] = useState(0); const [reason, setReason] = useState('Chegirma / qaytarish');
   const i = byId(db.invoices, inv.id) || inv;
-  const cust = byId(db.parties, i.customerId)!; const co = byId(db.companies, i.companyId)!;
+  const cust = byId(db.parties, i.customerId); const co = byId(db.companies, i.companyId); if (!cust || !co) return null;
   const pays = db.payments.filter((p) => p.allocations.some((a) => a.docId === i.id));
   const cns = db.invoices.filter((x) => x.relatedId === i.id);
   const so = byId(db.salesOrders, i.soId);

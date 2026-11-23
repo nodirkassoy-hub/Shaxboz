@@ -74,7 +74,7 @@ export type SourceType =
   | 'opening' | 'manual' | 'sales_invoice' | 'credit_note' | 'receipt' | 'delivery' | 'retail'
   | 'bill' | 'supplier_payment' | 'goods_receipt' | 'payroll' | 'payroll_payment' | 'tax_payment'
   | 'vat_settlement' | 'tax_accrual' | 'depreciation' | 'asset_purchase' | 'wo_issue' | 'wo_complete'
-  | 'overhead_variance' | 'expense' | 'dividend' | 'transfer' | 'adjustment' | 'reversal' | 'sales_return' | 'loan' | 'allocation';
+  | 'overhead_variance' | 'year_close' | 'expense' | 'dividend' | 'transfer' | 'adjustment' | 'reversal' | 'sales_return' | 'loan' | 'allocation';
 
 export interface JournalEntry {
   id: string;

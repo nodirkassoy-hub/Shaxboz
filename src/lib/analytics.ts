@@ -252,7 +252,7 @@ export function customerProfit(db: DB, s: Scope, from: string, to: string) {
 export function supplierSpend(db: DB, s: Scope, from: string, to: string) {
   const map = new Map<string, { id: string; name: string; spend: number; bills: number; open: number; onTime: number; deliveries: number; category: string }>();
   for (const b of db.bills.filter((x) => inScope(s, x.companyId) && between(x.date, from, to))) {
-    const p = byId(db.parties, b.supplierId)!; const r = map.get(p.id) || { id: p.id, name: p.name, spend: 0, bills: 0, open: 0, onTime: 0, deliveries: 0, category: p.segment };
+    const p = byId(db.parties, b.supplierId); if (!p) continue; const r = map.get(p.id) || { id: p.id, name: p.name, spend: 0, bills: 0, open: 0, onTime: 0, deliveries: 0, category: p.segment };
     r.spend += b.net; r.bills++; r.open += billOpen(b); map.set(p.id, r);
   }
   for (const po of db.purchaseOrders.filter((x) => inScope(s, x.companyId) && x.receivedDate && between(x.receivedDate, from, to) && x.supplierId)) {

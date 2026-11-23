@@ -4,8 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000",
+    "prebuild": "tsx scripts/gen-data.ts",
     "build": "next build",
-    "start": "next start --port 3000"
+    "start": "next start --port 3000",
+    "seed": "tsx scripts/gen-data.ts",
+    "lint": "tsc --noEmit",
+    "test": "tsx scripts/test.ts",
+    "test:data": "tsx scripts/verify.ts"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.11",

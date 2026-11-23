@@ -124,6 +124,9 @@ export function simulate(): DB {
   }
 
   postSimulation(db, R);
+  // Joriy oy (oy oxirigacha yopilmagan) ustama farqi — 2510 manfiy qoldiq qolmasin
+  op.closeOverhead(db, 'fac', TODAY, ctx(USERS.acc, TODAY, 'chief_accountant'));
+  yearEndRollover(db, 2026);
   return db;
 }
 
@@ -496,6 +499,37 @@ function recurring(db: DB, R: ReturnType<typeof makeRng>, d: string, cx: Ctx, pa
   if (d === '2026-09-16') op.recordExpense(db, { date: d, companyId: 'trd', branchId: 'tas', account: '9426', amount: 48_600_000, vat: 5_832_000, payAccount: '5110', memo: 'Ofis mebeli va jihozlari (bir martalik)', costCenter: 'Ma’muriyat', supplierId: 's7' }, cx);
 }
 
+// ═══ Year-end: 2025 foydasini taqsimlanmagan foyda hisobiga o‘tkazish ═══
+/**
+ * Balans sintetik hisoblariga oid yakuniy tuzatish. Hisobot davri yopilganda
+ * 2025 yil daromad/xarajat hisoblari 8710 (taqsimlanmagan foyda) ga yopiladi —
+ * shuning uchun joriy yil boshidagi qoldiq faqat 8710 da turadi va yillik
+ * sof foyda = 8710 harakati bo‘lib ko‘rinadi (double counting bo‘lmaydi).
+ */
+function yearEndRollover(db: DB, year: number) {
+  const from = `${year - 1}-01-01`; const to = `${year - 1}-12-31`;
+  const bal: Record<string, number> = {};
+  for (const e of db.entries) {
+    if (e.status === 'draft' || e.date < from || e.date > to) continue;
+    for (const l of e.lines) bal[l.account] = (bal[l.account] || 0) + l.debit - l.credit;
+  }
+  const re = /^(9|8[4-9])/; // 9xxx daromad/xarajat + 8xxx natija hisoblari
+  const close = Object.entries(bal).filter(([code, v]) => re.test(code) && Math.abs(v) >= 1);
+  if (!close.length) return;
+  for (const co of db.companies.map((c) => c.id)) {
+    const lines: JournalLine[] = [];
+    // Har bir hisob qoldig'ini nolga keltiramiz, farqni 8710 ga yozamiz
+    for (const e of db.entries) {
+      if (e.companyId !== co || e.status === 'draft' || e.date < from || e.date > to) continue;
+      for (const l of e.lines) if (re.test(l.account)) lines.push({ account: l.account, debit: l.credit, credit: l.debit, memo: 'Yil yopilishi' });
+    }
+    if (!lines.length) continue;
+    const net = lines.reduce((s2, l) => s2 + l.debit - l.credit, 0);
+    lines.push({ account: '8710', debit: 0, credit: net, memo: `${year - 1} yil yakuniy foydasi` });
+    postEntry(db, { date: to, companyId: co, branchId: db.companies.find((c) => c.id === co)!.branchIds[0], memo: `${year - 1} yil yopilishi — foyda taqsimlanmagan foydaga o‘tkazildi`, source: { type: 'year_close' }, lines }, { ...SYS, date: to });
+  }
+}
+
 // ═══ Month close ═════════════════════════════════════════════════
 function monthClose(db: DB, R: ReturnType<typeof makeRng>, d: string, cx: Ctx) {
   const mk = monthKey(d);
@@ -512,6 +546,13 @@ function monthClose(db: DB, R: ReturnType<typeof makeRng>, d: string, cx: Ctx) {
   if (d === quarterEnd(d)) {
     const q = Math.ceil(+d.slice(5, 7) / 3); const qs = `${d.slice(0, 4)}-${String(q * 3 - 2).padStart(2, '0')}-01`;
     for (const co of ['trd', 'fac', 'srv']) { op.accrueIncomeTax(db, co, qs, d, `${q}-chorak ${d.slice(0, 4)}`, cx); op.accruePropertyTax(db, co, d, `${q}-chorak ${d.slice(0, 4)}`, cx); }
+  }
+  // 2-chorak foyda solig‘i 3-chorak oxirida (20.07) to‘langan — 6412 qoldig‘i faqat 3-chorak hisobiga qoladi
+  if (mk === '2026-07' && d === '2026-07-20') {
+    for (const co of ['trd', 'fac', 'srv']) {
+      const ob = db.taxObligations.find((o) => o.companyId === co && o.status === 'open' && db.taxTypes.find((t) => t.id === o.taxId)?.code === 'CIT' && o.period.startsWith('2-chorak'));
+      if (ob) { try { op.payTax(db, ob.id, d, cx); } catch { /* mablag‘ yetmasa qoldiramiz */ } }
+    }
   }
   // Close period after 10 days (simulated) — all months up to July are closed
   if (mk <= '2026-07') for (const co of ['trd', 'fac', 'srv']) db.periods.push({ companyId: co, period: mk, status: 'closed', closedBy: USERS.acc, closedAt: addDays(d, 10) });
@@ -561,7 +602,7 @@ function postSimulation(db: DB, R: ReturnType<typeof makeRng>) {
   // ── Draft & pending operational items (approval center)
   const cr = cx(USERS.buyer, 'purchasing_manager');
   const pr1 = op.createPurchaseRequest(db, { date: '2026-09-21', expectedDate: '2026-10-05', companyId: 'fac', branchId: 'chr', warehouseId: 'wR', lines: [{ productId: 'r2', description: 'Mis sim / shina', qty: 2400, price: 0, discount: 0, vat: 12 }, { productId: 'r4', description: 'Elektr komponentlar to‘plami', qty: 600, price: 0, discount: 0, vat: 12 }], requestedBy: USERS.fac }, cr);
-  op.sendRfq(db, pr1.id, ['s4', 's6', 's1'], cr);
+  op.sendRfq(db, pr1.id, ['s4', 's6', 's8'], cr);  // s8 — zavod ta'minotchisi (s1 faqat savdo kompaniyasiga tegishli)
   op.recordQuote(db, pr1.id, 's4', [112_500, 147_000], 7, '2026-09-22', cr);
   op.recordQuote(db, pr1.id, 's6', [118_000, 139_500], 12, '2026-09-22', cr);
   const pr2 = op.createPurchaseRequest(db, { date: '2026-09-22', expectedDate: '2026-10-10', companyId: 'trd', branchId: 'tas', warehouseId: 'wA', lines: [{ productId: 'g6', description: 'Kuchlanish stabilizatori 5 kVt', qty: 120, price: 1_655_000, discount: 0, vat: 12 }], supplierId: 's1', requestedBy: USERS.buyer }, cr);
@@ -617,7 +658,7 @@ function postSimulation(db: DB, R: ReturnType<typeof makeRng>) {
 
   // ── Documents: contracts, acts, reconciliation acts
   const D = (kind: DB['documents'][number]['kind'], title: string, date: string, companyId: string, partyId: string | undefined, amount: number | undefined, status: DB['documents'][number]['status'], user: string, file?: string) => {
-    const doc = op.addDoc(db, { kind, title, date, companyId, partyId, amount, status, fileName: file, fileSize: file ? R.int(90, 900) * 1024 : undefined }, { user, role: 'accountant', date, time: '10:00:00' });
+    const doc = op.addDoc(db, { kind, title, date, companyId, partyId, amount, status, fileName: file || `${kind}_${date.slice(0, 7)}.pdf`, fileSize: R.int(90, 900) * 1024 }, { user, role: 'accountant', date, time: '10:00:00' });
     if (status !== 'draft') doc.history.push({ date, user: USERS.cfo, action: status === 'signed' ? 'Imzolandi (demo — ERI ulanmagan)' : status === 'rejected' ? 'Rad etildi' : status === 'archived' ? 'Arxivlandi' : status === 'approved' ? 'Tasdiqlandi' : 'Tasdiqlashga yuborildi' });
   };
   D('contract', 'Yetkazib berish shartnomasi 2026 — Premium Distribution', '2026-01-10', 'trd', 'c3', 5_000_000_000, 'signed', USERS.sales, 'shartnoma_premium_2026.pdf');

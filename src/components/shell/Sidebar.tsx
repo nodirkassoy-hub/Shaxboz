@@ -7,8 +7,11 @@ import { can, roleOf } from '@/lib/rbac';
 import { cx, Avatar } from '@/components/ui';
 import { Logo } from './Logo';
 import { NAV } from './nav';
+import type { ModuleId } from '@/lib/types';
 import { scopeOf, deriveAlerts } from '@/lib/analytics';
 import { canDecide } from '@/lib/rbac';
+import { useBilling, useEntitlements } from '@/lib/billing/store';
+import { Lock } from 'lucide-react';
 
 export function useBadges() {
   const { db, role, filters } = useApp();
@@ -22,6 +25,8 @@ export function useBadges() {
 
 export function Sidebar() {
   const { nav, go, role, sidebarCollapsed: col, toggleSidebar, mobileMenu, setMobileMenu } = useApp();
+  const ent = useEntitlements();
+  const canUse = (m: ModuleId) => ent.modules === 'all' || ent.modules.includes(m);
   const t = useT();
   const badges = useBadges();
   const r = roleOf(role);
@@ -41,13 +46,15 @@ export function Sidebar() {
               {collapsed && <div className="mx-3 mb-1.5 h-px bg-line" />}
               {items.map((i) => {
                 const active = nav.module === i.id; const Icon = i.icon; const b = badges[i.id];
+                const locked = !canUse(i.id);
                 return (
                   <button key={i.id} onClick={() => go(i.id)} title={collapsed ? t(`nav.${i.id}`) : undefined}
                     className={cx('group relative mb-0.5 flex w-full items-center gap-2.5 rounded-[11px] text-[13px] font-medium transition-all', collapsed ? 'h-10 justify-center' : 'h-9 px-2.5',
                       active ? 'bg-accent-soft text-accent' : 'text-t2 hover:bg-surface-2 hover:text-t1')}>
                     {active && <span className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-accent" />}
                     <Icon className={cx('h-[17px] w-[17px] shrink-0', i.id === 'ai' && !active && 'text-accent')} strokeWidth={active ? 2.2 : 1.9} />
-                    {!collapsed && <span className="flex-1 truncate text-left">{t(`nav.${i.id}`)}</span>}
+                    {!collapsed && <span className={cx('flex-1 truncate text-left', locked && 'text-t3')}>{t(`nav.${i.id}`)}</span>}
+                    {locked && (collapsed ? <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-warn" /> : <Lock className="h-3 w-3 shrink-0 text-t3" aria-label="Tarifda yopiq" />)}
                     {!collapsed && i.id === 'ai' && <span className="rounded-md bg-gradient-to-r from-accent to-accent-2 px-1.5 text-[9.5px] font-bold leading-4 text-white">AI</span>}
                     {b ? (collapsed ? <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-neg" /> : <span className="num rounded-md bg-neg/12 px-1.5 text-[10.5px] font-semibold leading-[18px] text-neg">{b}</span>) : null}
                   </button>
