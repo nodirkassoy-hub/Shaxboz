@@ -767,10 +767,14 @@ export function requestApproval(db: DB, a: Omit<ApprovalItem, 'id' | 'status' | 
   return item;
 }
 
-export function addDoc(db: DB, a: Omit<DocRecord, 'id' | 'no' | 'history'> & { no?: string }, ctx: Ctx) {
+export function addDoc(db: DB, a: Omit<DocRecord, 'id' | 'no' | 'history'> & { no?: string; registry?: boolean }, ctx: Ctx) {
   const prefix = { invoice: 'D-INV', contract: 'D-CTR', act: 'D-ACT', waybill: 'D-WB', purchase_order: 'D-PO', sales_order: 'D-SO', payment: 'D-PAY', reconciliation: 'D-REC' }[a.kind];
   const d: DocRecord = { ...a, id: nextId(db, 'doc'), no: a.no || nextNo(db, prefix, a.date, 4), history: [{ date: a.date, user: ctx.user, action: 'Yaratildi' }] };
-  db.documents.push(d);
+  // Documents created automatically by posting engines (waybill on delivery, invoice,
+  // PO approval) are already represented in their own modules. Only documents with an
+  // uploaded file — or explicitly flagged for the registry — are kept in the archive.
+  if (d.fileName || a.registry) db.documents.push(d);
+  delete (d as DocRecord & { registry?: boolean }).registry;
   return d;
 }
 

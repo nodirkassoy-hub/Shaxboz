@@ -1,0 +1,11 @@
+{
+  "name": "BALANS AI — biznesni boshqarish tizimi",
+  "short_name": "BALANS AI",
+  "description": "Buxgalteriya, savdo, ombor, ishlab chiqarish, HR, soliqlar va AI CFO bitta tizimda.",
+  "start_url": "/app",
+  "display": "standalone",
+  "background_color": "#070a12",
+  "theme_color": "#070a12",
+  "lang": "uz",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
