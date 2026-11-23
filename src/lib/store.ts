@@ -7,7 +7,7 @@ import type { Currency, Lang, RoleId, ModuleId } from './types';
 import { TODAY } from './core/dates';
 import { roleOf } from './rbac';
 import { registerAccount } from './core/coa';
-import { loadDemo, getCached, type DemoPayload } from './demo/loader';
+import { loadDemo, getCached, DemoLoadError, type DemoErrorCode, type DemoPayload } from './demo/loader';
 import type { Brand } from './demo/types';
 
 export interface LoggedAction { type: string; payload: unknown; ctx: Ctx }
@@ -27,6 +27,7 @@ interface Store {
   ready: boolean;
   error: string | null;
   errorDetail: string | null;
+  errorCode: DemoErrorCode | null;
   db: DB;
   log: LoggedAction[];
   brand: Brand;
@@ -74,6 +75,17 @@ const LS_LOG = 'balans.log.v4';
 const LS_PREF = 'balans.pref.v4';
 
 /** Replay qilingan amallar uchun baza nusxasi (JSON klon — toza va tez). */
+/** Xatoni yagona joyda state'ga yozish (kod + xabar + diagnostika). */
+function errorState(e: unknown): { status: 'error'; ready: false; error: string; errorDetail: string | null; errorCode: DemoErrorCode } {
+  const err = e as DemoLoadError;
+  return {
+    status: 'error', ready: false,
+    error: err?.message || 'Demo ma’lumotlarni yuklab bo‘lmadi.',
+    errorDetail: err?.detail || null,
+    errorCode: err instanceof DemoLoadError ? err.code : 'server',
+  };
+}
+
 function fromPayload(p: DemoPayload): DB {
   return JSON.parse(JSON.stringify(p.db)) as DB;
 }
@@ -102,6 +114,7 @@ export const useApp = create<Store>((set, get) => ({
   ready: false,
   error: null,
   errorDetail: null,
+  errorCode: null,
   db: null as unknown as DB,
   log: [],
   brand: 'factory',
@@ -127,7 +140,7 @@ export const useApp = create<Store>((set, get) => ({
     const theme = (pref.theme as 'dark' | 'light') || 'dark';
     document.documentElement.classList.toggle('dark', theme === 'dark');
     document.documentElement.lang = (pref.lang as string) || 'uz';
-    set({ status: 'loading', brand, theme, lang: (pref.lang as Lang) || 'uz', role: (pref.role as RoleId) || 'cfo', error: null, errorDetail: null });
+    set({ status: 'loading', brand, theme, lang: (pref.lang as Lang) || 'uz', role: (pref.role as RoleId) || 'cfo', error: null, errorDetail: null, errorCode: null });
     try {
       const payload = await loadDemo(brand);
       let log: LoggedAction[] = [];
@@ -139,18 +152,18 @@ export const useApp = create<Store>((set, get) => ({
         filters: { ...defaultFilters(), ...((pref.filters as Partial<Filters>) || {}) },
       });
     } catch (e) {
-      set({ status: 'error', ready: false, error: (e as Error).message || 'Demo ma’lumotlarni yuklab bo‘lmadi.', errorDetail: (e as { detail?: string }).detail || null });
+      set(errorState(e));
     }
   },
 
   retry: async () => {
     const brand = get().brand;
-    set({ status: 'loading', error: null, errorDetail: null });
+    set({ status: 'loading', error: null, errorDetail: null, errorCode: null });
     try {
       const payload = await loadDemo(brand, { force: !getCached(brand) });
       set({ status: 'ready', ready: true, db: fromPayload(payload), log: [] });
     } catch (e) {
-      set({ status: 'error', ready: false, error: (e as Error).message, errorDetail: (e as { detail?: string }).detail || null });
+      set(errorState(e));
     }
   },
 
@@ -163,7 +176,7 @@ export const useApp = create<Store>((set, get) => ({
       persistPref(get());
       return;
     }
-    set({ brand, status: 'loading', ready: false, error: null });
+    set({ brand, status: 'loading', ready: false, error: null, errorDetail: null, errorCode: null });
     void get().initBrand(brand);
   },
 
@@ -173,7 +186,7 @@ export const useApp = create<Store>((set, get) => ({
       set({ status: 'ready', ready: true, db: fromPayload(payload), log: [], nav: { module: 'dashboard' }, filters: defaultFilters() });
       persistPref(get());
     } catch (e) {
-      set({ status: 'error', error: (e as Error).message, errorDetail: (e as { detail?: string }).detail || null });
+      set(errorState(e));
     }
   },
 

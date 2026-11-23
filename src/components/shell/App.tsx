@@ -14,9 +14,12 @@ import type { ModuleId } from '@/lib/types';
 import { useBilling } from '@/lib/billing/store';
 import { UpgradeGate } from '@/components/billing/UpgradeGate';
 import { TrialBar } from '@/components/billing/TrialBar';
+import { DEMO_ERROR_KEY } from '@/lib/demo/loader';
+import { ErrorBoundary } from './ErrorBoundary';
+import { DemoBar } from './DemoBar';
 
 // Lazy-loaded modules (code-splitting per module)
-const MODULES: Record<ModuleId, React.LazyExoticComponent<React.ComponentType>> = {
+const MODULES: Record<ModuleId, React.ComponentType> = {
   dashboard: lazy(() => import('@/components/dash/Dashboard')),
   ai: lazy(() => import('@/components/ai/AiPage')),
   approvals: lazy(() => import('@/components/modules/Approvals')),
@@ -37,6 +40,8 @@ const MODULES: Record<ModuleId, React.LazyExoticComponent<React.ComponentType>> 
   analytics: lazy(() => import('@/components/modules/Analytics')),
   notifications: lazy(() => import('@/components/modules/Notifications')),
   settings: lazy(() => import('@/components/modules/Settings')),
+  // Obuna — o'z manziliga ega sahifa; quyidagi effekt uni ochadi.
+  subscription: () => <PageSkeleton />,
 };
 const AiDrawer = lazy(() => import('@/components/ai/AiDrawer'));
 
@@ -68,26 +73,37 @@ function Boot({ slow }: { slow: boolean }) {
   );
 }
 
-function LoadError({ message, detail, onRetry }: { message: string; detail?: string | null; onRetry: () => void }) {
+function LoadError({ code, detail, onRetry }: { code: string | null; detail?: string | null; onRetry: () => void }) {
+  const t = useT();
+  const key = (code && DEMO_ERROR_KEY[code as keyof typeof DEMO_ERROR_KEY]) || 'errors.server';
   return (
-    <div className="grid min-h-screen place-items-center px-4">
+    <div className="grid min-h-screen place-items-center bg-canvas px-4 py-10">
       <div className="w-full max-w-md rounded-3xl border border-line bg-surface-solid p-6 text-center shadow-pop">
         <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-neg/10 text-neg"><WifiOff className="h-6 w-6" /></div>
-        <h1 className="mt-4 text-[17px] font-semibold text-t1">Ma’lumotlarni yuklab bo‘lmadi</h1>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-t2">{message}</p>
-        {detail && <p className="mt-2 break-words rounded-xl bg-surface-2 p-2 font-mono text-[11px] text-t3">{detail}</p>}
+        <h1 className="mt-4 text-[17px] font-semibold text-t1">{t('errors.title')}</h1>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-t2">{t(key)}</p>
+        {/* Texnik tafsilot faqat diagnostika uchun, yig‘ilgan holda */}
+        {detail && (
+          <details className="mt-3 text-left">
+            <summary className="cursor-pointer text-[11.5px] text-t3 hover:text-t1">Texnik tafsilot</summary>
+            <p className="mt-1.5 max-h-24 overflow-auto break-words rounded-xl bg-surface-2 p-2 font-mono text-[10.5px] leading-relaxed text-t3">{detail}</p>
+          </details>
+        )}
         <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
-          <Button variant="primary" size="md" icon={<RefreshCw className="h-4 w-4" />} onClick={onRetry}>Qayta urinish</Button>
-          <Button size="md" onClick={() => window.location.reload()}>Sahifani yangilash</Button>
+          <Button variant="primary" size="md" icon={<RefreshCw className="h-4 w-4" />} onClick={onRetry}>{t('errors.retry')}</Button>
+          <Button size="md" onClick={() => window.location.reload()}>{t('errors.reload')}</Button>
         </div>
-        <p className="mt-4 text-[11.5px] leading-relaxed text-t3">Muammo davom etsa: internet aloqasini tekshiring yoki <a href="/contact" className="text-accent hover:underline">qo‘llab-quvvatlashga</a> yozing.</p>
+        <p className="mt-4 text-[11.5px] leading-relaxed text-t3">
+          {t('errors.help')} <a href="/contact" className="text-accent hover:underline">{t('errors.support')}</a>
+        </p>
+        <a href="/app" className="mt-3 inline-block text-[11.5px] font-medium text-t3 hover:text-t1">← Demoni qaytadan boshlash</a>
       </div>
     </div>
   );
 }
 
 export function App() {
-  const { status, error, errorDetail, init, retry, nav, role, sidebarCollapsed, aiOpen, openAi, go, readOnly } = useApp();
+  const { status, errorCode, errorDetail, init, retry, nav, role, sidebarCollapsed, aiOpen, openAi, go, readOnly, lang } = useApp();
   const t = useT();
   const initBilling = useBilling((s) => s.init);
   const [slow, setSlow] = useState(false);
@@ -102,7 +118,13 @@ export function App() {
 
   useEffect(() => { (window as unknown as { __go: typeof go }).__go = go; }, [go]);
 
-  if (status === 'error') return <LoadError message={error || 'Noma’lum xatolik'} detail={errorDetail} onRetry={() => void retry()} />;
+  // "Obuna" — alohida manzilli sahifa (/subscription). Ilova ichida modul emas,
+  // shuning uchun nav o'zgarganda to'liq sahifaga o'tamiz.
+  useEffect(() => {
+    if (nav.module === 'subscription' && typeof window !== 'undefined') window.location.assign('/subscription');
+  }, [nav.module]);
+
+  if (status === 'error') return <LoadError code={errorCode} detail={errorDetail} onRetry={() => void retry()} />;
   if (status !== 'ready') return <Boot slow={slow} />;
 
   const Mod = MODULES[nav.module];
@@ -115,6 +137,8 @@ export function App() {
         <Topbar />
         <main className="mx-auto max-w-[1600px] px-3 pb-28 pt-4 sm:px-5 md:pb-10 lg:px-7" key={nav.module + (nav.tab || '') + (readOnly ? '-ro' : '')}>
           <TrialBar />
+          <DemoBar />
+          <ErrorBoundary resetKey={nav.module + (nav.tab || '')} lang={lang}>
           <Suspense fallback={<PageSkeleton />}>
             {!roleAllowed ? (
               <Empty icon={<Lock className="h-5 w-5" />} title={t('common.noAccess')} body="Joriy rolingiz uchun bu bo‘lim yopiq. Rolni profil menyusidan o‘zgartirishingiz mumkin (demo)." action={<Button onClick={() => go('dashboard')}>Boshqaruv paneliga qaytish</Button>} />
@@ -124,6 +148,7 @@ export function App() {
               <Mod />
             )}
           </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
       <MobileNav />

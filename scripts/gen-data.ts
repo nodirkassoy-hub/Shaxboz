@@ -8,8 +8,7 @@
  *
  * Run: npm run seed
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { gzipSync } from 'node:zlib';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { simulate } from '../src/lib/seed/simulate';
 import { addDays, TODAY } from '../src/lib/core/dates';
@@ -51,13 +50,29 @@ function main() {
     const payload = { version: DATA_VERSION, generatedAt: new Date().toISOString(), today: TODAY, kind, db };
     const json = JSON.stringify(payload);
     writeFileSync(join(OUT_DIR, `demo-${kind}.json`), json);
-    writeFileSync(join(OUT_DIR, `demo-${kind}.json.gz`), gzipSync(json, { level: 9 }));
     console.log(
-      `${`demo-${kind}.json`.padEnd(18)} ${mb(json.length).padStart(9)} (${mb(gzipSync(json, { level: 9 }).length)} gz) · companies ${db.companies.length} · entries ${db.entries.length} · ` +
+      `${`demo-${kind}.json`.padEnd(18)} ${mb(json.length).padStart(9)} · companies ${db.companies.length} · entries ${db.entries.length} · ` +
         `invoices ${db.invoices.length} · products ${db.products.length} · employees ${db.employees.length} · ${BRANDS[kind].legal}`,
     );
   }
   console.log(`done in ${Date.now() - t0} ms`);
 }
 
-main();
+/**
+ * Build hech qachon demo ma’lumot sababli yiqilmasin.
+ * `prebuild` da bu skript ishlaydi, lekin repoda tayyor `demo-*.json` fayllar ham
+ * turadi. Agar generatsiya xato bersa va fayllar mavjud bo‘lsa — ogohlantirib
+ * chiqamiz (exit 0), aks holda xatoni ko‘rsatamiz.
+ */
+try {
+  main();
+} catch (e) {
+  const have = ['factory', 'trade'].every((k) => existsSync(join(OUT_DIR, `demo-${k}.json`)));
+  console.error(`⚠️  Demo ma’lumotni qayta yaratishda xato: ${(e as Error).message}`);
+  if (have) {
+    console.error('   Repodagi mavjud `src/data/demo-*.json` ishlatiladi — build davom etadi.');
+    process.exit(0);
+  }
+  console.error('   Zaxira fayllar ham yo‘q — build to‘xtatildi.');
+  process.exit(1);
+}
