@@ -1,8 +1,9 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { SITE_URL } from '@/lib/config/site';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://balans-ai.uz'),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: 'BALANS AI — Biznesni boshqarish tizimi: buxgalteriya, savdo, ombor va AI CFO',
     template: '%s · BALANS AI',
@@ -13,7 +14,11 @@ export const metadata: Metadata = {
   keywords: ['buxgalteriya', 'ERP', 'AI CFO', 'O‘zbekiston', 'soliqlar', 'QQS', 'ombor', 'ishlab chiqarish', 'biznes boshqaruv', 'moliyaviy tahlil'],
   authors: [{ name: 'BALANS AI' }],
   creator: 'BALANS AI',
-  icons: { icon: '/favicon.svg', shortcut: '/favicon.svg', apple: '/favicon.svg' },
+  icons: {
+    icon: [{ url: '/favicon.ico', sizes: '16x16 32x32 48x48' }, { url: '/favicon.svg', type: 'image/svg+xml' }],
+    shortcut: '/favicon.ico',
+    apple: '/apple-icon.png',
+  },
   manifest: '/manifest.webmanifest',
   openGraph: {
     type: 'website',

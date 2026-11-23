@@ -17,7 +17,8 @@ export type Perm = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export' 
 export type ModuleId =
   | 'dashboard' | 'ai' | 'approvals' | 'accounting' | 'finance' | 'sales' | 'purchasing'
   | 'inventory' | 'warehouse' | 'manufacturing' | 'crm' | 'hr' | 'taxes'
-  | 'documents' | 'assets' | 'projects' | 'reports' | 'analytics' | 'notifications' | 'settings';
+  | 'documents' | 'assets' | 'projects' | 'reports' | 'analytics' | 'notifications' | 'settings'
+  | 'subscription';
 
 export interface Company {
   id: string;

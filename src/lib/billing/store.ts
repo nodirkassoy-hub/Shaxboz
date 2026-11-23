@@ -18,9 +18,30 @@ import type { ModuleId } from '@/lib/types';
 
 const LS = 'balans.billing.v3';
 
+/** Serverdan kelgan obuna holati (haqiqiy manba). */
+export interface ServerSubscription {
+  authenticated: boolean;
+  today: string;
+  serverTime: string;
+  timezone: string;
+  account?: Account;
+  entitlements?: {
+    planId: PlanId; status: Entitlements['status']; readOnly: boolean;
+    modules: ModuleId[] | 'all'; users: number | null; warehouses: number | null;
+    aiQuestions: number | null; aiUsed: number; aiLeft: number | null;
+    daysLeft: number; trialDaysLeft: number; graceLeft: number; periodEnd: string; reason: string;
+  };
+  policy?: { trialDays: number; graceDays: number; retentionDays: number };
+}
+
 interface BillingStore {
   ready: boolean;
   account: Account | null;
+  /** Serverdagi holat (sinov kunlari SHU yerdan olinadi). */
+  server: ServerSubscription | null;
+  serverError: string | null;
+  /** Serverdan holatni yangilash. */
+  syncServer: () => Promise<void>;
   /** Demo: sinov sanasini siljitish (test uchun) */
   init: () => void;
   reset: () => void;
@@ -85,6 +106,32 @@ function syncReadOnly(acc: Account | null) {
 export const useBilling = create<BillingStore>((set, get) => ({
   ready: false,
   account: null,
+  server: null,
+  serverError: null,
+
+  /**
+   * Serverdan obuna holatini olish.
+   *
+   * MUHIM: sinov kunlari **serverdagi** `trial_ends_at` dan hisoblanadi.
+   * localStorage faqat oflayn ko‘rsatish uchun zaxira; foydalanuvchi uni
+   * o‘chirib sinovni qayta boshlamaydi.
+   */
+  syncServer: async () => {
+    try {
+      const res = await fetch('/api/billing/subscription', { headers: { accept: 'application/json' }, cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as ServerSubscription;
+      set({ server: data, serverError: null });
+      // Serverdagi hisob brauzerdagidan ustun
+      if (data.authenticated && data.account) {
+        save(data.account);
+        set({ account: data.account });
+        syncReadOnly(data.account);
+      }
+    } catch (e) {
+      set({ serverError: (e as Error).message || 'Serverga ulanmadi' });
+    }
+  },
 
   init: () => {
     if (get().ready) return;
@@ -94,6 +141,8 @@ export const useBilling = create<BillingStore>((set, get) => ({
     save(acc);
     set({ ready: true, account: acc });
     syncReadOnly(acc);
+    // Server holatini fonda yangilaymiz (sinov kunlari serverdan)
+    void get().syncServer();
   },
 
   reset: () => {
@@ -105,7 +154,22 @@ export const useBilling = create<BillingStore>((set, get) => ({
   ent: () => {
     const acc = get().account;
     if (!acc) return entitlements(demoAccount(), TODAY);
-    return entitlements(acc, TODAY);
+    const local = entitlements(acc, TODAY);
+    const srv = get().server;
+    // Server javobi bo‘lsa — u haqiqiy manba (sinov kunlari, read-only, limitlar)
+    if (srv?.authenticated && srv.entitlements) {
+      const e = srv.entitlements;
+      const plan = planOf(e.planId);
+      return {
+        ...local,
+        plan, planId: e.planId, status: e.status, readOnly: e.readOnly,
+        modules: e.modules, users: e.users, warehouses: e.warehouses,
+        aiQuestions: e.aiQuestions, aiUsed: e.aiUsed, aiLeft: e.aiLeft,
+        daysLeft: e.daysLeft, trialDaysLeft: e.trialDaysLeft, graceLeft: e.graceLeft,
+        periodEnd: e.periodEnd, reason: e.reason,
+      };
+    }
+    return local;
   },
 
   canUse: (m) => {
@@ -174,6 +238,25 @@ export const useBilling = create<BillingStore>((set, get) => ({
     if (e.users !== null && acc.team.length >= e.users) return { ok: false, error: `Tarif bo‘yicha ${e.users} foydalanuvchi. Qo‘shimcha foydalanuvchi — 29 000 so‘m/oy.` };
     acc.team = [...acc.team, { id: `u${Date.now()}`, name: m.name, email: m.email.trim().toLowerCase(), role: m.role, status: 'invited' }];
     save(acc); set({ account: { ...acc } });
+    // Server ham tekshiradi va saqlaydi (limit serverda ham majburiy).
+    void (async () => {
+      try {
+        const res = await fetch('/api/billing/team', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: m.name, email: m.email, role: m.role }),
+        });
+        if (res.status === 401) return; // hisobsiz demo rejim — faqat lokal
+        if (!res.ok) {
+          const d = (await res.json().catch(() => ({}))) as { error?: string };
+          // Server rad etdi — lokal o‘zgarishni qaytaramiz
+          const cur = get().account;
+          if (cur) { cur.team = cur.team.filter((t) => t.email !== m.email.trim().toLowerCase()); save(cur); set({ account: { ...cur } }); }
+          set({ serverError: d.error || 'Foydalanuvchi qo‘shilmadi.' });
+          return;
+        }
+        await get().syncServer();
+      } catch { /* tarmoq yo‘q — lokal holat saqlanadi */ }
+    })();
     return { ok: true };
   },
 
@@ -181,6 +264,7 @@ export const useBilling = create<BillingStore>((set, get) => ({
     const acc = get().account; if (!acc || acc.team.length <= 1) return;
     acc.team = acc.team.filter((t) => t.id !== id);
     save(acc); set({ account: { ...acc } });
+    void fetch(`/api/billing/team?userId=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => undefined);
   },
 
   askAi: () => {
@@ -192,14 +276,21 @@ export const useBilling = create<BillingStore>((set, get) => ({
 
   setProfile: (p) => {
     const acc = get().account; if (!acc) return;
-    acc.company = { ...acc.company, ...p };
-    if (p.userName) acc.user = { ...acc.user, name: p.userName };
+    const { userName, ...company } = p;
+    acc.company = { ...acc.company, ...company };
+    if (userName) acc.user = { ...acc.user, name: userName };
     save(acc); set({ account: { ...acc } });
+    void fetch('/api/billing/settings', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p),
+    }).catch(() => undefined);
   },
 
   setVat: (v) => {
     const acc = get().account; if (!acc) return;
     acc.vatEnabled = v; save(acc); set({ account: { ...acc } });
+    void fetch('/api/billing/settings', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ vatEnabled: v }),
+    }).catch(() => undefined);
   },
 
   /** Demo: sinovdan qolgan kunlarni o‘zgartirish (7/3/1 kun eslatmalarini sinash uchun). */

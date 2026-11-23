@@ -14,13 +14,13 @@ const nfUsd1 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1, minimu
 export const num = (n: number) => nf0.format(Math.round(n)).replace(/\u00a0/g, ' ');
 export const num1 = (n: number) => nf1.format(n).replace(/\u00a0/g, ' ');
 
-const SYM: Record<Currency, string> = { UZS: "so'm", USD: '$', EUR: '€' };
+const SYM: Record<Currency, string> = { UZS: 'so‘m', USD: '$', EUR: '€' };
 export const curSymbol = (c: Currency) => SYM[c];
 
 /** Full precision money. Input always UZS. */
 export function money(uzs: number, cur: Currency = 'UZS', rates: Rates = DEMO_RATES) {
   const v = convert(uzs, cur, rates);
-  if (cur === 'UZS') return `${num(v)} so'm`;
+  if (cur === 'UZS') return `${num(v)} ${SYM.UZS}`;
   const s = nf2.format(Math.round(Math.abs(v)));
   return `${v < 0 ? '−' : ''}${SYM[cur]}${s}`;
 }

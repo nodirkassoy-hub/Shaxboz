@@ -5,4 +5,5 @@ out
 next-env.d.ts
 .env*.local
 
-src/data/*.json.gz
+# Server-side hisoblar (fayl drayveri) — maxfiy ma’lumot, repoga kirmaydi
+.data/

@@ -3,8 +3,7 @@
  * Build vaqtida demo bazadan hisoblanadi (server komponentida) —
  * shuning uchun birinchi HTML bo‘sh emas va raqamlar real demo bilan bir xil.
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { bundledDemo } from '@/data/bundle';
 import { balances, pnl, monthlySeries } from '@/lib/core/ledger';
 import { moneyC } from '@/lib/core/money';
 import { TODAY, monthStart, monthsBetween, addMonths, monthEnd } from '@/lib/core/dates';
@@ -22,10 +21,21 @@ export interface LandingStats {
 
 let cached: LandingStats | null = null;
 
+/**
+ * Landing uchun raqamlar. Manba — bundle qilingan demo (fs yo‘q), shuning uchun
+ * ma’lumot fayli topilmasa ham build buzilmaydi: zaxira "bo‘sh" ko‘rsatkichlar
+ * qaytadi (sahifa baribir to‘liq render bo‘ladi).
+ */
 export function landingStats(): LandingStats {
   if (cached) return cached;
-  const raw = JSON.parse(readFileSync(join(process.cwd(), 'src', 'data', 'demo-factory.json'), 'utf8')) as { db: DB };
-  const db = raw.db;
+  let db: DB;
+  try {
+    db = bundledDemo('factory').db as unknown as DB;
+    if (!Array.isArray(db.entries)) throw new Error('demo bundle formati noto‘g‘ri');
+  } catch {
+    cached = emptyStats();
+    return cached;
+  }
   const s = { companyIds: db.companies.map((c) => c.id) };
   const from = monthStart(TODAY);
   const p = pnl(db.entries, s, from, TODAY);
@@ -70,4 +80,17 @@ export function landingStats(): LandingStats {
   void monthEnd;
   void ytd;
   return cached;
+}
+
+/** Zaxira: demo bundle yuklanmasa ham landing render bo‘ladi. */
+function emptyStats(): LandingStats {
+  const months = monthsBetween(addMonths(monthStart(TODAY), -8), monthStart(TODAY));
+  const label = (key: string) => ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'][+key.slice(5, 7) - 1];
+  return {
+    revenue: '0', expenses: '0', net: '0', cash: '0', ar: '0', ap: '0', stock: '0', tax: '0',
+    series: months.map((m) => ({ label: label(m), revenue: 0, net: 0 })),
+    netRaw: 0, revenueRaw: 0, marginRaw: 0,
+    counts: { entries: 0, invoices: 0, products: 0, employees: 0, companies: 0 },
+    insights: [],
+  };
 }

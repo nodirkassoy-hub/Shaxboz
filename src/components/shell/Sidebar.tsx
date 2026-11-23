@@ -56,6 +56,17 @@ export function Sidebar() {
                     {!collapsed && <span className={cx('flex-1 truncate text-left', locked && 'text-t3')}>{t(`nav.${i.id}`)}</span>}
                     {locked && (collapsed ? <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-warn" /> : <Lock className="h-3 w-3 shrink-0 text-t3" aria-label="Tarifda yopiq" />)}
                     {!collapsed && i.id === 'ai' && <span className="rounded-md bg-gradient-to-r from-accent to-accent-2 px-1.5 text-[9.5px] font-bold leading-4 text-white">AI</span>}
+                    {/* Obuna: sinov davrida qolgan kunlar belgisi */}
+                    {i.id === 'subscription' && ent.status === 'trial' && (
+                      collapsed
+                        ? <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-warn" title={`${ent.trialDaysLeft} kun`} />
+                        : <span className="num shrink-0 rounded-md bg-warn/15 px-1.5 text-[10px] font-bold leading-[18px] text-warn">{ent.trialDaysLeft} kun</span>
+                    )}
+                    {i.id === 'subscription' && ent.status !== 'trial' && !collapsed && (
+                      <span className={cx('shrink-0 rounded-md px-1.5 text-[10px] font-bold leading-[18px]', ent.status === 'active' ? 'bg-pos/12 text-pos' : 'bg-neg/12 text-neg')}>
+                        {ent.status === 'active' ? 'Faol' : 'O‘qish'}
+                      </span>
+                    )}
                     {b ? (collapsed ? <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-neg" /> : <span className="num rounded-md bg-neg/12 px-1.5 text-[10.5px] font-semibold leading-[18px] text-neg">{b}</span>) : null}
                   </button>
                 );
